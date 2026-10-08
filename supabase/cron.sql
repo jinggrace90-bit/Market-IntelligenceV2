@@ -19,6 +19,7 @@ select cron.schedule('mi-news',      '*/10 * * * *', $$select mi_call('/api/cron
 select cron.schedule('mi-quotes',    '*/5 * * * *',  $$select mi_call('/api/cron/quotes')$$);
 select cron.schedule('mi-sentiment', '5 * * * *',    $$select mi_call('/api/cron/sentiment')$$);
 select cron.schedule('mi-calendar',  '15 */6 * * *', $$select mi_call('/api/cron/calendar')$$);
+select cron.schedule('mi-daily',     '30 22 * * *',  $$select mi_call('/api/cron/daily')$$);  -- UTC; needs EULERPOOL_API_KEY on Vercel
 
 -- To check:   select * from cron.job;   select * from cron.job_run_details order by start_time desc limit 10;
 -- To remove:  select cron.unschedule('mi-news');

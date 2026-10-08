@@ -84,7 +84,7 @@ git push
 
 | 环境变量 | 在哪找 | 注意 |
 |---|---|---|
-| `SUPABASE_URL` | **Project URL**，形如 `https://xxxx.supabase.co` | 可公开，但仍不加 `NEXT_PUBLIC_` |
+| `SUPABASE_URL` | **Project URL**，形如 `https://xxxx.supabase.co` | **只写到 `.supabase.co` 为止**，不要带 `/rest/v1/`（复制 API 页面里的 REST 地址会多出这段，导致 `PGRST125` 错误；代码已自动容错，但请写对） |
 | `SUPABASE_SERVICE_ROLE_KEY` | `service_role` 密钥（新版界面可能叫 **secret key**） | **最高权限，绝不能泄露** |
 
 > 不要用 `anon` / `publishable` 密钥。我们的网站只在服务器端访问数据库。
@@ -106,30 +106,37 @@ SUPABASE_SERVICE_ROLE_KEY=你的密钥
 1. 打开 https://console.groq.com → 注册/登录。
 2. 左侧 **API Keys** → **Create API Key** → 复制（只显示一次）。
 3. 写进 `.env.local`：`GROQ_API_KEY=gsk_...`
-4. 模型名在 https://console.groq.com/docs/models 查看。默认用 `llama-3.3-70b-versatile`，如果它被下线了，把 `GROQ_MODEL=` 改成列表里的新模型名。
+4. 默认模型是 `openai/gpt-oss-20b`（已实测可用；原先的 `llama-3.3-70b-versatile` 在你的账号里已下线）。模型会不定期换，所以如果 `npm run seed` 输出里出现 `groqError ... model_not_found`，说明模型被下线了，请到 https://console.groq.com/docs/models 找一个现有的聊天模型，写进 `GROQ_MODEL=`。
 5. 重启后运行 `npm run seed`，输出里应显示 `"groq":true,"analyzed":数字`。网站新闻面板里会出现 Bullish/Bearish 标签。
 
-规则：每条新闻**只分析一次**，结果存数据库，页面打开时不调用 Groq。免费额度有每分钟/每天限制，超了会自动跳过（新闻照常显示，只是没有 AI 标签）。
+规则：每条新闻**只分析一次**，结果存数据库，页面打开时不调用 Groq。每次最多分析 12 条最新且还没有结果的新闻。免费额度有每分钟（约 8000 token）/每天限制，撞到时 `npm run seed` 会显示 `groqError`，新闻照常显示，只是暂时没有 AI 标签，下一轮会自动补上。
+
+> **看懂 seed 输出**：`inserted: 0` 是**正常**的——它的意思是"这次抓到的新闻都已经在库里了"，不是失败。判断是否成功要看 `analyzed`（本轮新增的 AI 解读条数）和有没有 `groqError`。
 
 ---
 
-## 5. Eulerpool（基本面 / 业绩日历 / 收益率历史）
+## 5. Eulerpool（业绩日历 / 收益率与 VIX 历史）
 
-目前**只做了探测脚本**，还没有接进页面。原因：文档里公开写明的只有 `/v1/earnings/calendar`，经济日历和国债收益率的路径没写，按项目规则（CLAUDE.md："不要猜"）要先看真实返回。
+**已接入**（2026-10-08 用真实 key 实测过路径和字段）。
 
 1. 注册：https://www.eulerpool.com/developers/register（免费、不需要信用卡）。
-2. 拿到 key，写进 `.env.local`：`EULERPOOL_API_KEY=...`
-3. 运行：
+2. 写进 `.env.local`：`EULERPOOL_API_KEY=...`
+3. 验证：`npm run probe:eulerpool`，应该看到四行 `200`。
+4. 跑 `npm run seed`，最后一行 `daily` 会显示抓到多少条业绩日历、US10Y 和 VIX 的历史天数。
 
-```bash
-npm run probe:eulerpool
-# 也可以指定路径：
-npm run probe:eulerpool -- /earnings/calendar
-```
+它做什么（`/api/cron/daily`，每天一次）：
 
-4. 把输出（**不要包含 key**）发给我，我据此写 `lib/sources/eulerpool.ts`。
+| 数据 | 接口 | 去向 |
+|---|---|---|
+| 未来 14 天业绩日历（预期 EPS / 营收） | `/api/1/calendar/earnings/{日期}` | `earnings_events` 表 |
+| US10Y 日收盘历史 | `/api/1/government/treasury/yields`（字段 `y10`，字符串，单位 %） | `candles` 表，作为 Yahoo 不可用时的图表退路 |
+| VIX 日收盘历史 | `/api/1/market/cboe/indices?symbol=VIX` | 同上 |
 
-> 免费版只有日收盘数据（ARCHITECTURE §2），只做历史/退路，不用于盘中。
+> **排错记录（避免重蹈）**：Eulerpool 的正确地址是 `https://api.eulerpool.com/api/1/...`，**不是** `/v1/...`。路径写错会返回 404，此时响应里的 `x-ratelimit-remaining` 只说明服务器收到了请求，**不代表路径正确**。完整接口清单（约 375 个）：`curl -H "Authorization: Bearer 你的KEY" https://api.eulerpool.com/api/1/documentation/yaml`。
+>
+> 它的 `economic-calendar` 只返回 FRED 的"发布名称+日期"，没有时间、重要性、预测值，所以**不能**替代日历面板，日历面板继续用 ForexFactory 镜像。
+>
+> 免费版只有日收盘数据，只做历史与退路，不用于盘中。业绩日历数据已入库，页面上暂时还没有展示入口。
 
 ---
 
@@ -148,8 +155,8 @@ npm run probe:eulerpool -- /earnings/calendar
 | `SUPABASE_URL` | 第 3.3 步的 URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | 第 3.3 步的密钥 |
 | `GROQ_API_KEY` | 第 4 步的 key |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile`（或你选的） |
-| `EULERPOOL_API_KEY` | 第 5 步的 key（暂时可以不填） |
+| `GROQ_MODEL` | `openai/gpt-oss-20b`（或你选的） |
+| `EULERPOOL_API_KEY` | 第 5 步的 key |
 | `CRON_SECRET` | **新生成一个**：终端运行 `openssl rand -hex 32`，复制结果 |
 
 > `CRON_SECRET` 不要沿用本机的 `dev-secret-change-me`。请把它另存一份，第 7 步要用。

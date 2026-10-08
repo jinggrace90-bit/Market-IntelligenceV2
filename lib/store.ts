@@ -11,15 +11,26 @@ import type { EconEvent, NewsItem, Quote, SentimentRow } from './types';
 
 export type QuoteRow = Quote & { symbol: string; yahoo_symbol: string };
 export interface AiFields { ai_tone: string; ai_impact: string; ai_summary: string; tickers: string[] }
-export interface CandleRow { ts: number; c: number }
+export interface CandleRow { ts: number; c: number; source?: string }
+export interface EarningsRowDb { symbol: string; report_date: string; eps_est: number | null; rev_est: number | null; source: string }
 
 let sb: SupabaseClient | null | undefined;
 function supabase(): SupabaseClient | null {
   if (sb !== undefined) return sb;
-  const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let url = process.env.SUPABASE_URL?.trim();
+  if (url) {
+    // supabase-js appends /rest/v1 itself, so a pasted ".../rest/v1/" would double it (PGRST125). Keep only the origin.
+    try { url = new URL(url).origin; } catch { url = undefined; }
+  }
   sb = url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
   return sb;
+}
+
+/** Supabase calls return {error} instead of throwing. Never ignore it: a silent failure looks like "connected". */
+function must<T extends { error: { message: string; code?: string } | null }>(res: T, what: string): T {
+  if (res.error) throw new Error(`Supabase ${what} failed: ${res.error.message}${res.error.code ? ` (${res.error.code})` : ''}`);
+  return res;
 }
 
 export function storeMode(): 'supabase' | 'file' {
@@ -33,6 +44,7 @@ interface FileDb {
   sentiment: Record<string, SentimentRow>;
   events: Record<string, EconEvent>;
   candles: Record<string, CandleRow[]>;
+  earnings?: Record<string, EarningsRowDb>;
   seq: number;
 }
 const FILE = path.join(process.cwd(), '.data', 'store.json');
@@ -58,13 +70,13 @@ export async function upsertQuotes(rows: QuoteRow[]): Promise<void> {
   const now = new Date().toISOString();
   const db = supabase();
   if (db) {
-    await db.from('quotes_latest').upsert(
+    must(await db.from('quotes_latest').upsert(
       rows.map((r) => ({
         symbol: r.symbol, yahoo_symbol: r.yahoo_symbol, price: r.price, change: r.change, change_pct: r.changePct,
         prev_close: r.prevClose, day_low: r.dayLow, day_high: r.dayHigh, wk52_low: r.wk52Low, wk52_high: r.wk52High,
         market_state: r.marketState, source: r.source, as_of: r.asOf, fetched_at: now,
       })),
-    );
+    ), 'quotes upsert');
     return;
   }
   const f = readFile();
@@ -75,7 +87,7 @@ export async function upsertQuotes(rows: QuoteRow[]): Promise<void> {
 export async function getQuotes(): Promise<Record<string, Quote & { fetchedAt: string }>> {
   const db = supabase();
   if (db) {
-    const { data } = await db.from('quotes_latest').select('*');
+    const { data } = must(await db.from('quotes_latest').select('*'), 'quotes read');
     const out: Record<string, Quote & { fetchedAt: string }> = {};
     for (const r of data ?? []) {
       out[r.symbol] = {
@@ -102,7 +114,7 @@ export async function insertNews(items: NewRow[]): Promise<NewsItem[]> {
   if (!items.length) return [];
   const db = supabase();
   if (db) {
-    const { data } = await db.from('news').upsert(items, { onConflict: 'url', ignoreDuplicates: true }).select();
+    const { data } = must(await db.from('news').upsert(items, { onConflict: 'url', ignoreDuplicates: true }).select(), 'news insert');
     return (data ?? []) as NewsItem[];
   }
   const f = readFile();
@@ -123,7 +135,7 @@ export async function insertNews(items: NewRow[]): Promise<NewsItem[]> {
 export async function setNewsAi(id: number, ai: AiFields): Promise<void> {
   const db = supabase();
   if (db) {
-    await db.from('news').update({ ...ai, analyzed_at: new Date().toISOString() }).eq('id', id);
+    must(await db.from('news').update({ ...ai, analyzed_at: new Date().toISOString() }).eq('id', id), 'news AI update');
     return;
   }
   const f = readFile();
@@ -135,11 +147,11 @@ export async function setNewsAi(id: number, ai: AiFields): Promise<void> {
 export async function getNews(limit = 40): Promise<NewsItem[]> {
   const db = supabase();
   if (db) {
-    const { data } = await db
+    const { data } = must(await db
       .from('news')
       .select('id,url,title,summary,source,published_at,tickers,ai_tone,ai_impact,ai_summary')
       .order('published_at', { ascending: false })
-      .limit(limit);
+      .limit(limit), 'news read');
     return (data ?? []) as NewsItem[];
   }
   return readFile().news.slice(0, limit);
@@ -150,7 +162,7 @@ export async function setSentiment(kind: string, r: Omit<SentimentRow, 'kind' | 
   const row = { kind, ...r, fetched_at: new Date().toISOString() };
   const db = supabase();
   if (db) {
-    await db.from('sentiment').upsert(row);
+    must(await db.from('sentiment').upsert(row), 'sentiment upsert');
     return;
   }
   const f = readFile();
@@ -161,7 +173,7 @@ export async function setSentiment(kind: string, r: Omit<SentimentRow, 'kind' | 
 export async function getSentiment(): Promise<Record<string, SentimentRow>> {
   const db = supabase();
   if (db) {
-    const { data } = await db.from('sentiment').select('*');
+    const { data } = must(await db.from('sentiment').select('*'), 'sentiment read');
     return Object.fromEntries((data ?? []).map((r: SentimentRow) => [r.kind, r]));
   }
   return readFile().sentiment;
@@ -172,7 +184,7 @@ export async function upsertEvents(rows: EconEvent[]): Promise<void> {
   if (!rows.length) return;
   const db = supabase();
   if (db) {
-    await db.from('econ_events').upsert(rows);
+    must(await db.from('econ_events').upsert(rows), 'events upsert');
     return;
   }
   const f = readFile();
@@ -183,7 +195,7 @@ export async function upsertEvents(rows: EconEvent[]): Promise<void> {
 export async function getEvents(fromIso: string, toIso: string): Promise<EconEvent[]> {
   const db = supabase();
   if (db) {
-    const { data } = await db.from('econ_events').select('*').gte('ts', fromIso).lt('ts', toIso).order('ts');
+    const { data } = must(await db.from('econ_events').select('*').gte('ts', fromIso).lt('ts', toIso).order('ts'), 'events read');
     return (data ?? []) as EconEvent[];
   }
   return Object.values(readFile().events)
@@ -192,26 +204,46 @@ export async function getEvents(fromIso: string, toIso: string): Promise<EconEve
 }
 
 // ---------- candles (fallback when Yahoo is down) ----------
-export async function saveCandles(symbol: string, interval: string, rows: CandleRow[]): Promise<void> {
+export async function saveCandles(symbol: string, interval: string, rows: CandleRow[], source = 'Yahoo Finance'): Promise<void> {
   if (!rows.length) return;
   const db = supabase();
   if (db) {
-    const payload = rows.map((r) => ({ symbol, interval, ts: new Date(r.ts).toISOString(), c: r.c, source: 'Yahoo Finance' }));
-    for (let i = 0; i < payload.length; i += 500) await db.from('candles').upsert(payload.slice(i, i + 500));
+    const payload = rows.map((r) => ({ symbol, interval, ts: new Date(r.ts).toISOString(), c: r.c, source }));
+    for (let i = 0; i < payload.length; i += 500) must(await db.from('candles').upsert(payload.slice(i, i + 500)), 'candles upsert');
     return;
   }
   const f = readFile();
-  f.candles[`${symbol}|${interval}`] = rows;
+  f.candles[`${symbol}|${interval}`] = rows.map((r) => ({ ...r, source }));
   writeFile(f);
 }
 
 export async function loadCandles(symbol: string, interval: string, sinceMs: number): Promise<CandleRow[]> {
   const db = supabase();
   if (db) {
-    const { data } = await db
-      .from('candles').select('ts,c').eq('symbol', symbol).eq('interval', interval)
-      .gte('ts', new Date(sinceMs).toISOString()).order('ts').limit(5000);
-    return (data ?? []).map((r) => ({ ts: new Date(r.ts).getTime(), c: Number(r.c) }));
+    const { data } = must(await db
+      .from('candles').select('ts,c,source').eq('symbol', symbol).eq('interval', interval)
+      .gte('ts', new Date(sinceMs).toISOString()).order('ts').limit(5000), 'candles read');
+    return (data ?? []).map((r) => ({ ts: new Date(r.ts).getTime(), c: Number(r.c), source: r.source as string }));
   }
   return (readFile().candles[`${symbol}|${interval}`] ?? []).filter((r) => r.ts >= sinceMs);
+}
+
+// ---------- earnings calendar (Eulerpool, daily job) ----------
+export async function upsertEarnings(rows: EarningsRowDb[]): Promise<void> {
+  if (!rows.length) return;
+  const db = supabase();
+  if (db) {
+    for (let i = 0; i < rows.length; i += 500) must(await db.from('earnings_events').upsert(rows.slice(i, i + 500)), 'earnings upsert');
+    return;
+  }
+  const f = readFile();
+  f.earnings = f.earnings ?? {};
+  for (const r of rows) f.earnings[`${r.symbol}|${r.report_date}`] = r;
+  writeFile(f);
+}
+
+export async function countEarnings(): Promise<number> {
+  const db = supabase();
+  if (db) return must(await db.from('earnings_events').select('*', { count: 'exact', head: true }), 'earnings count').count ?? 0;
+  return Object.keys(readFile().earnings ?? {}).length;
 }

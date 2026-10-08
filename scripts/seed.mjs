@@ -7,7 +7,7 @@ const env = loadEnv();
 const base = (process.argv[2] || 'http://localhost:3000').replace(/\/$/, '');
 if (!env.CRON_SECRET) { console.error('CRON_SECRET is missing (set it in .env.local)'); process.exit(1); }
 
-for (const job of ['quotes', 'sentiment', 'calendar', 'news']) {
+for (const job of ['quotes', 'sentiment', 'calendar', 'news', 'daily']) {
   try {
     const res = await fetch(`${base}/api/cron/${job}`, { method: 'POST', headers: { authorization: `Bearer ${env.CRON_SECRET}` } });
     console.log(String(res.status).padEnd(4), job.padEnd(10), (await res.text()).slice(0, 200));

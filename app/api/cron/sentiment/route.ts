@@ -7,6 +7,14 @@ export const maxDuration = 60;
 
 async function run(req: Request) {
   if (!isCronAuthorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  try {
+    return await job();
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
+  }
+}
+
+async function job() {
   const [cnn, crypto] = await Promise.all([getCnnFearGreed(), getCryptoFearGreed()]);
   if (cnn) await store.setSentiment('cnn_fg', cnn);
   if (crypto) await store.setSentiment('crypto_fg', crypto);

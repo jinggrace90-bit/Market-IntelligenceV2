@@ -8,6 +8,14 @@ export const maxDuration = 60;
 
 async function run(req: Request) {
   if (!isCronAuthorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  try {
+    return await job();
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
+  }
+}
+
+async function job() {
   const q = await getQuotes(ALL_STATIC.map((x) => x.y));
   if (!q) return NextResponse.json({ ok: false, error: 'Yahoo unreachable' }, { status: 502 });
   const rows = ALL_STATIC.filter((x) => q[x.y]).map((x) => ({ ...q[x.y], symbol: x.id, yahoo_symbol: x.y }));

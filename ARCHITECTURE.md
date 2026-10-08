@@ -218,4 +218,7 @@ Watchlist 的"搜索后添加"：v1 存在浏览器的 `localStorage` 里，因�
 - **板块 / 内部结构**不依赖 `candles` 表：`/api/sectors` 按周期直接取 Yahoo 日线并在服务端算涨跌幅，CDN 缓存（1D 30 秒，5D/1M 10 分钟，其余 6 小时）。
 - **图表 K 线**成功后异步写入 `candles`，Yahoo 失败时从 `candles` 读取并标注 "saved copy"。
 - **本地开发**未配置 Supabase 时，数据写入 `.data/store.json`（已 gitignore），行为与线上一致。
-- 尚未实现：`/api/cron/daily`（Eulerpool 基本面 / 业绩日历 / 日线历史），`earnings_events` 表已建好但未使用。
+- **Eulerpool 已实测并接入**（`lib/sources/eulerpool.ts`，`/api/cron/daily`）：base 是 `https://api.eulerpool.com/api/1`（不是 `/v1`），Bearer 头可用。业绩日历 `/calendar/earnings/{date}` → `earnings_events`；`/government/treasury/yields`（`y10` 为字符串）和 `/market/cboe/indices?symbol=VIX` → `candles`（interval 标记为 `eulerpool-1d`，避免与 Yahoo 日线混在一起），仅在 Yahoo 图表失败时作退路。`/calendar/economic-calendar` 只有 FRED 发布名+日期，不含时间/预测，**不用于经济日历**。
+- **Groq 默认模型**改为 `openai/gpt-oss-20b`（`llama-3.3-70b-versatile` 已下线）。每轮最多分析 12 条尚无 AI 结果的最新新闻；`reasoning_effort: low` 以适应免费档 8000 TPM。
+- **数据库错误不再被吞掉**：`lib/store.ts` 对每个 Supabase 调用检查 `error`，cron 路由返回 `{ok:false,error}`。`SUPABASE_URL` 会被规范化为只保留 origin。
+- 尚未实现：页面上展示业绩日历（数据已入库）；基本面（个股）。

@@ -27,11 +27,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(body, { headers: { 'Cache-Control': `public, s-maxage=${s}, stale-while-revalidate=${s * 2}` } });
   }
 
-  const saved = await store.loadCandles(y, interval, period1.getTime()).catch(() => []);
+  let saved = await store.loadCandles(y, interval, period1.getTime()).catch(() => []);
+  // Daily-range fallback written by /api/cron/daily (kept under its own interval tag so it never mixes with Yahoo candles).
+  if (!saved.length && interval === '1d') saved = await store.loadCandles(y, 'eulerpool-1d', period1.getTime()).catch(() => []);
   if (saved.length) {
     const body: ChartResponse = {
       symbol, range, points: saved.map((r) => [r.ts, r.c]), prevClose: null, tz: null,
-      source: 'Yahoo Finance (saved copy)', asOf: new Date(saved[saved.length - 1].ts).toISOString(), stale: true,
+      source: `${saved[saved.length - 1].source ?? 'Yahoo Finance'} (saved copy)`, asOf: new Date(saved[saved.length - 1].ts).toISOString(), stale: true,
     };
     return NextResponse.json(body, { headers: { 'Cache-Control': 'public, s-maxage=10' } });
   }

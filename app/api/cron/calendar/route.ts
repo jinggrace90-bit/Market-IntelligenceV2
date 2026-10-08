@@ -7,6 +7,14 @@ export const maxDuration = 60;
 
 async function run(req: Request) {
   if (!isCronAuthorized(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  try {
+    return await job();
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
+  }
+}
+
+async function job() {
   const events = await getEconCalendar();
   if (!events) return NextResponse.json({ ok: false, error: 'calendar source unreachable' }, { status: 502 });
   await store.upsertEvents(events);
