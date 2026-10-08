@@ -140,8 +140,26 @@ export async function setNewsAi(id: number, ai: AiFields): Promise<void> {
   }
   const f = readFile();
   const n = f.news.find((x) => x.id === id);
-  if (n) Object.assign(n, ai);
+  if (n) Object.assign(n, ai, { analyzed_at: new Date().toISOString() });
   writeFile(f);
+}
+
+const NEWS_COLS = 'id,url,title,summary,source,published_at,tickers,ai_tone,ai_impact,ai_summary,analyzed_at';
+
+export async function getNewsById(id: number): Promise<NewsItem | null> {
+  const db = supabase();
+  if (db) {
+    const { data } = must(await db.from('news').select(NEWS_COLS).eq('id', id).maybeSingle(), 'news read by id');
+    return (data as NewsItem | null) ?? null;
+  }
+  return readFile().news.find((n) => n.id === id) ?? null;
+}
+
+/** How many AI analyses ran since `iso` — the shared rate limit for the public analyze endpoint. */
+export async function countAnalyzedSince(iso: string): Promise<number> {
+  const db = supabase();
+  if (db) return must(await db.from('news').select('id', { count: 'exact', head: true }).gte('analyzed_at', iso), 'analysis count').count ?? 0;
+  return readFile().news.filter((n) => n.analyzed_at && n.analyzed_at >= iso).length;
 }
 
 export async function getNews(limit = 40): Promise<NewsItem[]> {

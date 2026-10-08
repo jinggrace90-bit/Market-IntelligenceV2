@@ -59,6 +59,7 @@ export interface NewsItem {
   ai_tone: string | null;
   ai_impact: string | null;
   ai_summary: string | null;
+  analyzed_at?: string | null;
 }
 
 export interface SentimentRow {

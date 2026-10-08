@@ -33,7 +33,7 @@
 | 股市情绪 | CNN Fear & Greed（非官方 JSON，需要浏览器 UA 请求头） | 每小时 | 上次成功的值 + 时间 |
 | 加密情绪 | alternative.me（**这是 Crypto F&G**，只在查看 BTC/ETH 时显示，并标注 "Crypto"） | 每小时 | 上次成功的值 |
 | 新闻 | **RSS**（CNBC、Investing.com、MarketWatch、FT 等）。NewsAPI 免费版禁止用于生产环境，**不用** | 每 10 分钟 | 无 |
-| AI 新闻 / 宏观分析 | Groq | 只对**新入库**的新闻跑一次，结果存库 | 不显示 AI 标签 |
+| AI 新闻 / 宏观分析 | Groq | **用户点击 “Analyze with AI” 才对那一条跑一次**，结果存库并共享 | 提示稍后再试，不显示 AI 标签 |
 
 已实测（2026-10-05）：Eulerpool Free 返回 US10Y 5.28%（日期 2026-10-02）、VIX 收盘 16.39（日期 2026-10-01）。这说明 Eulerpool 免费版只有**日收盘**数据，而且 VIX 可能比 10Y 晚一天。所以它只能当历史或退路数据源，不能用于盘中。
 
@@ -97,8 +97,10 @@
  │      用 waitUntil() 异步 upsert quotes_latest（不阻塞响应）
  └─ /api/chart?symbol&range ──► 先读 candles，没有或过期再调 Yahoo 并回写
 
+/api/analyze（POST，用户点击触发，限流 8/分钟、300/天）──► Groq ──► 写 news.ai_*
+
 Supabase pg_cron ──pg_net POST（带 CRON_SECRET）──► Vercel /api/cron/*
- ├─ news         */10 * * * *   RSS → news 表 → 新条目送 Groq → 写 ai_*
+ ├─ news         */10 * * * *   RSS → news 表（不再自动调用 Groq）
  ├─ sentiment    5 * * * *      CNN F&G + alternative.me → sentiment 表
  ├─ quotes       */5 * * * *    Yahoo 批量 → quotes_latest（给页面首屏用）
  ├─ calendar     15 */6 * * *   经济日历 → econ_events
@@ -224,3 +226,4 @@ Watchlist 的"搜索后添加"：v1 存在浏览器的 `localStorage` 里，因�
 - **业绩日历面板**已实现（右侧工具栏第 3 个图标，快捷键 `E`）：读取 `earnings_events`（未来 14 天），按日期条切换，筛选「营收预期 ≥ $1B / 有预期值 / 我的品种」，可按代码跨日搜索，点击代码即可看图（临时品种不写入自选股）。来源只给报告日，没有盘前/盘后时间，面板底部已标注。
 - **Yahoo 的 0 值区间**：日内/52 周低点在换日时段可能返回 0，现按缺失处理，界面显示 `—`。
 - 尚未实现：基本面（个股）。
+- **AI 分析改为用户主动触发**（2026-10-08）：定时任务只抓 RSS，不再自动调用 Groq。新闻展开后点 “Analyze with AI” 才调用 `/api/analyze`，结果存库、每条只分析一次、所有访客共享；已有结果直接读库不再调用 Groq。接口限流从数据库的 `analyzed_at` 计数（每分钟 8、每天 300），超限返回 429。CLAUDE.md 规则 2、8 已同步修改。

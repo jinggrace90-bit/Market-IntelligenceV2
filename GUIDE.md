@@ -101,17 +101,18 @@ SUPABASE_SERVICE_ROLE_KEY=你的密钥
 
 ---
 
-## 4. Groq（AI 新闻分析）
+## 4. Groq（AI 新闻分析，用户点击才运行）
 
 1. 打开 https://console.groq.com → 注册/登录。
 2. 左侧 **API Keys** → **Create API Key** → 复制（只显示一次）。
 3. 写进 `.env.local`：`GROQ_API_KEY=gsk_...`
-4. 默认模型是 `openai/gpt-oss-20b`（已实测可用；原先的 `llama-3.3-70b-versatile` 在你的账号里已下线）。模型会不定期换，所以如果 `npm run seed` 输出里出现 `groqError ... model_not_found`，说明模型被下线了，请到 https://console.groq.com/docs/models 找一个现有的聊天模型，写进 `GROQ_MODEL=`。
-5. 重启后运行 `npm run seed`，输出里应显示 `"groq":true,"analyzed":数字`。网站新闻面板里会出现 Bullish/Bearish 标签。
+4. 默认模型是 `openai/gpt-oss-20b`（已实测可用；原先的 `llama-3.3-70b-versatile` 已下线）。模型会不定期换，如果点击分析后提示"The AI service could not analyse this right now"，到 https://console.groq.com/docs/models 找一个现有的聊天模型，写进 `GROQ_MODEL=`（Vercel 里改完要 Redeploy）。
 
-规则：每条新闻**只分析一次**，结果存数据库，页面打开时不调用 Groq。每次最多分析 12 条最新且还没有结果的新闻。免费额度有每分钟（约 8000 token）/每天限制，撞到时 `npm run seed` 会显示 `groqError`，新闻照常显示，只是暂时没有 AI 标签，下一轮会自动补上。
+**它怎么工作**：网站**不会**自动调用 AI。访客在新闻面板展开一条标题，点 **Analyze with AI**，才会把这一条标题发给 Groq，结果存进数据库，之后所有人看到的都是存好的结果（不会重复调用）。界面会标明"由 AI 生成，可能有误，不构成建议"。
 
-> **看懂 seed 输出**：`inserted: 0` 是**正常**的——它的意思是"这次抓到的新闻都已经在库里了"，不是失败。判断是否成功要看 `analyzed`（本轮新增的 AI 解读条数）和有没有 `groqError`。
+**限流**：这个接口是公开的，为防止有人刷光你的免费额度，全站合计每分钟最多 8 次、每天最多 300 次，超过会提示稍后再试。
+
+> 排错：线上点击后报错，先打开 `https://你的域名/api/health` 确认 `GROQ_API_KEY` 为 `true`。
 
 ---
 
@@ -197,7 +198,7 @@ from cron.job_run_details order by start_time desc limit 10;
 ## 8. 验收清单
 
 - [ ] 打开线上网址，有价格、图表、情绪。
-- [ ] 新闻面板有标题；配了 Groq 的话有 Bullish/Bearish 标签。
+- [ ] 新闻面板有标题；展开一条点 “Analyze with AI”，几秒后出现 Bullish/Bearish 标签和解读。
 - [ ] 日历面板有事件。
 - [ ] 手机浏览器打开布局正常。
 - [ ] `curl -s https://你的域名/api/quote?symbols=US10Y,VIX` 返回 JSON。
