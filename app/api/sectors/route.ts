@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cacheSeconds, isRange, type RangeId } from '@/lib/ranges';
 import { BASE, HELPERS } from '@/lib/instruments';
 import { getQuotes, getSeries } from '@/lib/sources/yahoo';
+import type { ChartPoint } from '@/lib/types';
 
 const DAY = 86400000;
 
@@ -21,7 +22,7 @@ function window(range: RangeId, now: number): { period1: Date; interval: string 
   }
 }
 
-function rangeReturn(range: RangeId, points: [number, number][], now: number): number | null {
+function rangeReturn(range: RangeId, points: ChartPoint[], now: number): number | null {
   if (points.length < 2) return null;
   const last = points[points.length - 1][1];
   let base: number;
