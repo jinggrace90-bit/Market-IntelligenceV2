@@ -24,7 +24,8 @@ async function load(): Promise<InitialData> {
       newest = Math.max(newest, new Date(fetchedAt).getTime());
     }
     return { quotes, quotesFetchedAt: newest ? new Date(newest).toISOString() : null, news, sentiment, events, earnings };
-  } catch {
+  } catch (e) {
+    console.error('[page] database read failed, rendering empty:', (e as Error).message);
     return { quotes: {}, quotesFetchedAt: null, news: [], sentiment: {}, events: [], earnings: [] };
   }
 }
