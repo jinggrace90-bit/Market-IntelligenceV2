@@ -30,9 +30,9 @@ input::placeholder { color: #8b929c; }
 }
 .mi-split { position: absolute; left: -8px; top: 0; bottom: 0; width: 16px; cursor: col-resize; z-index: 5; display: flex; align-items: center; justify-content: center; touch-action: none; border-radius: 0; }
 .mi-split::before { content: ''; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .12s; }
-.mi-grip { position: relative; width: 4px; height: 44px; border-radius: 2px; background: var(--line4); transition: background .12s, height .12s; }
+.mi-grip { position: relative; width: 4px; height: 44px; border-radius: 2px; background: var(--line4); transition: background .12s, transform .12s; }
 .mi-split:hover::before, .mi-split[data-drag="true"]::before { background: var(--line4); }
-.mi-split:hover .mi-grip, .mi-split:focus-visible .mi-grip, .mi-split[data-drag="true"] .mi-grip { background: var(--fg); height: 64px; }
+.mi-split:hover .mi-grip, .mi-split:focus-visible .mi-grip, .mi-split[data-drag="true"] .mi-grip { background: var(--fg); transform: scaleY(1.45); }
 .mi-rail { position: sticky; top: 0; height: 100dvh; border-left: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 10px; background: var(--bg); }
 .mi-railbtn { position: relative; }
 .mi-tip { position: absolute; right: 52px; top: 50%; transform: translateY(-50%); white-space: nowrap; background: #20242a; border: 1px solid var(--line3); color: var(--fg); font-size: 12px; padding: 5px 8px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .12s; }
