@@ -14,6 +14,16 @@ export async function GET() {
     GROQ_MODEL: process.env.GROQ_MODEL ?? '(default openai/gpt-oss-20b)',
     EULERPOOL_API_KEY: !!process.env.EULERPOOL_API_KEY,
   };
+  // Fingerprint of the Supabase address, enough to spot a typo without publishing the project id.
+  const raw = process.env.SUPABASE_URL ?? '';
+  let urlHint: Record<string, unknown> = { set: !!raw };
+  try {
+    const u = new URL(raw.trim());
+    urlHint = {
+      set: true, protocol: u.protocol, hostStart: u.hostname.slice(0, 4) + '****', hostEndsWith: u.hostname.split('.').slice(-2).join('.'),
+      hostLength: u.hostname.length, hasPathAfterHost: u.pathname !== '/', hadWhitespace: raw !== raw.trim(), rawLength: raw.length,
+    };
+  } catch { urlHint = { set: !!raw, parseable: false, rawLength: raw.length }; }
   const headers = { 'Cache-Control': 'no-store' };
   try {
     const [quotes, news, sentiment, earn] = await Promise.all([
@@ -27,6 +37,6 @@ export async function GET() {
       { headers },
     );
   } catch (e) {
-    return NextResponse.json({ ok: false, store: store.storeMode(), env, error: (e as Error).message.slice(0, 300) }, { status: 500, headers });
+    return NextResponse.json({ ok: false, store: store.storeMode(), env, supabaseUrl: urlHint, error: (e as Error).message.slice(0, 300) }, { status: 500, headers });
   }
 }
