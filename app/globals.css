@@ -4,6 +4,7 @@
   --line: #23272d; --line2: #2c3137; --line3: #3a4048; --line4: #636a74;
   --panel: #121417; --raised: #181b1f;
   --up: #3fcf8e; --down: #f2606b; --amber: #e3a33b;
+  --font-sans: 'IBM Plex Sans'; --font-mono: 'IBM Plex Mono'; --font-serif: 'Instrument Serif';
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); }
