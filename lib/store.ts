@@ -11,7 +11,7 @@ import type { EconEvent, NewsItem, Quote, SentimentRow } from './types';
 
 export type QuoteRow = Quote & { symbol: string; yahoo_symbol: string };
 export interface AiFields { ai_tone: string; ai_impact: string; ai_summary: string; tickers: string[] }
-export interface CandleRow { ts: number; c: number; source?: string }
+export interface CandleRow { ts: number; c: number; o?: number; h?: number; l?: number; source?: string }
 export interface EarningsRowDb { symbol: string; report_date: string; eps_est: number | null; rev_est: number | null; source: string }
 
 let sb: SupabaseClient | null | undefined;
@@ -226,7 +226,7 @@ export async function saveCandles(symbol: string, interval: string, rows: Candle
   if (!rows.length) return;
   const db = supabase();
   if (db) {
-    const payload = rows.map((r) => ({ symbol, interval, ts: new Date(r.ts).toISOString(), c: r.c, source }));
+    const payload = rows.map((r) => ({ symbol, interval, ts: new Date(r.ts).toISOString(), o: r.o ?? null, h: r.h ?? null, l: r.l ?? null, c: r.c, source }));
     for (let i = 0; i < payload.length; i += 500) must(await db.from('candles').upsert(payload.slice(i, i + 500)), 'candles upsert');
     return;
   }
@@ -239,9 +239,9 @@ export async function loadCandles(symbol: string, interval: string, sinceMs: num
   const db = supabase();
   if (db) {
     const { data } = must(await db
-      .from('candles').select('ts,c,source').eq('symbol', symbol).eq('interval', interval)
+      .from('candles').select('ts,o,h,l,c,source').eq('symbol', symbol).eq('interval', interval)
       .gte('ts', new Date(sinceMs).toISOString()).order('ts').limit(5000), 'candles read');
-    return (data ?? []).map((r) => ({ ts: new Date(r.ts).getTime(), c: Number(r.c), source: r.source as string }));
+    return (data ?? []).map((r) => ({ ts: new Date(r.ts).getTime(), c: Number(r.c), o: r.o == null ? undefined : Number(r.o), h: r.h == null ? undefined : Number(r.h), l: r.l == null ? undefined : Number(r.l), source: r.source as string }));
   }
   return (readFile().candles[`${symbol}|${interval}`] ?? []).filter((r) => r.ts >= sinceMs);
 }

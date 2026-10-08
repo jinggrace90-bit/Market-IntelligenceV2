@@ -37,10 +37,13 @@ export interface QuoteResponse {
   stale: boolean;
 }
 
+/** [epoch ms, close, open, high, low]. Open/high/low are present for live Yahoo data. */
+export type ChartPoint = [number, number, number?, number?, number?];
+
 export interface ChartResponse {
   symbol: string;
   range: string;
-  points: [number, number][]; // [epoch ms, close]
+  points: ChartPoint[]; // [epoch ms, close, open?, high?, low?]
   prevClose: number | null;
   tz: string | null;
   source: string;

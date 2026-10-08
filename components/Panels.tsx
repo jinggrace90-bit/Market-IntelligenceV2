@@ -363,7 +363,7 @@ export function AlertsPanel({ inst, price, alerts, priceOf, onChange }: AlertPro
         <button type="submit" className="btn" style={{ height: 44, borderRadius: 8, border: 'none', background: 'var(--fg)', color: 'var(--bg)', fontSize: 14, fontWeight: 600 }}>Create alert</button>
       </form>
       <div style={{ flexGrow: 1, overflowY: 'auto', borderTop: '1px solid var(--line)' }}>
-        {alerts.length === 0 && <p style={{ margin: 0, padding: '20px 16px', fontSize: 13, lineHeight: 1.5, color: 'var(--soft)' }}>No alerts yet. Alerts are checked in this browser while the page is open — no email or push in v1.</p>}
+        {alerts.length === 0 && <p style={{ margin: 0, padding: '20px 16px', fontSize: 13, lineHeight: 1.5, color: 'var(--soft)' }}>No alerts yet. Alerts are saved in this browser only (no account) and are checked while this page is open. They don’t sync to other devices and there is no email or push.</p>}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {alerts.map((a, idx) => {
             const { price: p, dp } = priceOf(a.sym);

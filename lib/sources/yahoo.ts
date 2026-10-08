@@ -1,5 +1,5 @@
 import YahooFinance from 'yahoo-finance2';
-import type { Quote } from '../types';
+import type { ChartPoint, Quote } from '../types';
 import { chartParams, type RangeId } from '../ranges';
 import { withTimeout } from './http';
 
@@ -45,7 +45,7 @@ export async function getQuotes(symbols: string[]): Promise<Record<string, Quote
 }
 
 export interface ChartData {
-  points: [number, number][];
+  points: ChartPoint[];
   prevClose: number | null;
   tz: string | null;
 }
@@ -62,9 +62,11 @@ function dayKey(ts: number, tz: string | null): string {
 export async function getSeries(symbol: string, period1: Date, interval: string): Promise<ChartData | null> {
   const res = (await withTimeout(yf.chart(symbol, { period1, interval: interval as any }, { validateResult: false }) as Promise<any>)) as any;
   if (!res || !Array.isArray(res.quotes)) return null;
-  const points: [number, number][] = res.quotes
+  // Rare rows have a null open/high/low: use the close for them so every point is a complete candle.
+  const ohlc = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+  const points: ChartPoint[] = res.quotes
     .filter((q: any) => q.date && typeof q.close === 'number' && Number.isFinite(q.close))
-    .map((q: any) => [new Date(q.date).getTime(), q.close as number]);
+    .map((q: any): ChartPoint => [new Date(q.date).getTime(), q.close, ohlc(q.open, q.close), ohlc(q.high, q.close), ohlc(q.low, q.close)]);
   if (!points.length) return null;
   return { points, prevClose: num(res.meta?.chartPreviousClose) ?? num(res.meta?.previousClose), tz: res.meta?.exchangeTimezoneName ?? null };
 }

@@ -3,7 +3,7 @@ import { toYahoo } from '@/lib/instruments';
 import { cacheSeconds, chartParams, isRange } from '@/lib/ranges';
 import { getChart } from '@/lib/sources/yahoo';
 import * as store from '@/lib/store';
-import type { ChartResponse } from '@/lib/types';
+import type { ChartPoint, ChartResponse } from '@/lib/types';
 
 const SYMBOL_RE = /^[A-Za-z0-9.^=\-]{1,15}$/;
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   if (data) {
     const last = data.points[data.points.length - 1][0];
-    after(() => store.saveCandles(y, interval, data.points.map(([ts, c]) => ({ ts, c }))).catch(() => {}));
+    after(() => store.saveCandles(y, interval, data.points.map(([ts, c, o, h, l]) => ({ ts, c, o, h, l }))).catch(() => {}));
     const body: ChartResponse = {
       symbol, range, points: data.points, prevClose: data.prevClose, tz: data.tz,
       source: 'Yahoo Finance', asOf: new Date(last).toISOString(), stale: false,
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   if (!saved.length && interval === '1d') saved = await store.loadCandles(y, 'eulerpool-1d', period1.getTime()).catch(() => []);
   if (saved.length) {
     const body: ChartResponse = {
-      symbol, range, points: saved.map((r) => [r.ts, r.c]), prevClose: null, tz: null,
+      symbol, range, points: saved.map((r): ChartPoint => (r.o != null && r.h != null && r.l != null ? [r.ts, r.c, r.o, r.h, r.l] : [r.ts, r.c])), prevClose: null, tz: null,
       source: `${saved[saved.length - 1].source ?? 'Yahoo Finance'} (saved copy)`, asOf: new Date(saved[saved.length - 1].ts).toISOString(), stale: true,
     };
     return NextResponse.json(body, { headers: { 'Cache-Control': 'public, s-maxage=10' } });
