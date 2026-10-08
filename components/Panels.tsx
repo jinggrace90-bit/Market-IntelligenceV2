@@ -4,7 +4,7 @@ import { AMBER, colorOf, DOWN, fmt, hhmm, inMin, pctStr, UP } from '@/lib/format
 import { instFromHit } from '@/lib/client';
 import { ALL_STATIC, GROUPS } from '@/lib/instruments';
 import type { SearchHit } from '@/lib/sources/yahoo-types';
-import type { EconEvent, Inst, NewsItem, Quote } from '@/lib/types';
+import type { EarningsEvent, EconEvent, Inst, NewsItem, Quote } from '@/lib/types';
 import { Ago, useNow } from './hooks';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -343,6 +343,136 @@ export function AlertsPanel({ inst, price, alerts, priceOf, onChange }: AlertPro
           })}
         </ul>
       </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ Earnings */
+function fmtRev(v: number | null): string {
+  if (v == null) return '—';
+  const a = Math.abs(v);
+  if (a >= 1e9) return '$' + (v / 1e9).toFixed(a >= 1e11 ? 0 : 1) + 'B';
+  if (a >= 1e6) return '$' + (v / 1e6).toFixed(a >= 1e8 ? 0 : 1) + 'M';
+  return '$' + Math.round(v).toLocaleString('en-US');
+}
+function fmtEps(v: number | null): string {
+  return v == null ? '—' : (v < 0 ? '−' : '') + Math.abs(v).toFixed(2);
+}
+function localIso(t: number): string {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+/** Parse YYYY-MM-DD as a local date so the weekday never shifts with the viewer's time zone. */
+function parseIso(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+type EarnFilter = 'big' | 'est' | 'mine';
+
+interface EarnProps {
+  earnings: EarningsEvent[];
+  myIds: Set<string>;
+  currentId: string;
+  onPick: (symbol: string) => void;
+}
+
+export function EarningsPanel({ earnings, myIds, currentId, onPick }: EarnProps) {
+  const now = useNow(60000);
+  const today = localIso(now);
+  const [day, setDay] = useState<string | null>(null);
+  const [filter, setFilter] = useState<EarnFilter>('big');
+  const [query, setQuery] = useState('');
+
+  const byDate = useMemo(() => {
+    const m = new Map<string, EarningsEvent[]>();
+    for (const e of earnings) {
+      if (e.report_date < today) continue;
+      const wd = parseIso(e.report_date).getDay();
+      if (wd === 0 || wd === 6) continue;
+      (m.get(e.report_date) ?? m.set(e.report_date, []).get(e.report_date)!).push(e);
+    }
+    return m;
+  }, [earnings, today]);
+  const dates = [...byDate.keys()].sort().slice(0, 10);
+  const selDay = day && byDate.has(day) ? day : dates[0] ?? null;
+
+  const passes = (e: EarningsEvent) =>
+    filter === 'big' ? (e.rev_est ?? 0) >= 1e9 : filter === 'est' ? e.eps_est != null || e.rev_est != null : myIds.has(e.symbol);
+  const q = query.trim().toUpperCase();
+  const pool = q ? dates.flatMap((d) => byDate.get(d)!) : selDay ? byDate.get(selDay)! : [];
+  const rows = pool
+    .filter((e) => (q ? e.symbol.includes(q) : passes(e)))
+    .sort((a, b) => a.report_date.localeCompare(b.report_date) || (b.rev_est ?? -1) - (a.rev_est ?? -1) || a.symbol.localeCompare(b.symbol))
+    .slice(0, 300);
+  const dayTotal = selDay ? byDate.get(selDay)!.length : 0;
+
+  const filters: [EarnFilter, string][] = [['big', 'Revenue ≥ $1B'], ['est', 'Has estimates'], ['mine', 'My symbols']];
+
+  return (
+    <>
+      <div style={{ padding: '14px 16px 6px' }}>
+        <label htmlFor="mi-earn-search" className="sr-only">Find a ticker in the next two weeks</label>
+        <input id="mi-earn-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a ticker, e.g. JPM" autoComplete="off"
+          style={{ width: '100%', height: 40, padding: '0 12px', background: 'var(--bg)', border: '1px solid var(--line4)', borderRadius: 8, color: 'var(--fg)', fontSize: 14 }} />
+      </div>
+      {!q && (
+        <>
+          <div role="group" aria-label="Report day" style={{ display: 'flex', gap: 4, padding: '8px 16px 10px', overflowX: 'auto', scrollbarWidth: 'thin' }}>
+            {dates.map((d) => {
+              const dt = parseIso(d), on = d === selDay, n = byDate.get(d)!.length;
+              return (
+                <button key={d} onClick={() => setDay(d)} aria-pressed={on} aria-label={`${DOW[dt.getDay()]} ${dt.getDate()} ${MONTHS[dt.getMonth()]}${d === today ? ', today' : ''}, ${n} reports`} className="btn"
+                  style={{ flex: '0 0 auto', minWidth: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minHeight: 60, padding: '6px 4px', borderRadius: 8, background: on ? 'var(--line)' : 'transparent', border: `1px solid ${d === today ? 'var(--line4)' : 'var(--line)'}`, color: 'var(--fg)' }}>
+                  <span style={{ fontSize: 12, color: 'var(--soft)' }}>{DOW[dt.getDay()]}</span>
+                  <span className="num" style={{ fontSize: 15, fontWeight: 500 }}>{dt.getDate()}</span>
+                  <span className="num" style={{ fontSize: 11, color: 'var(--muted)' }}>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div role="group" aria-label="Filter" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 16px 12px' }}>
+            {filters.map(([k, label]) => <button key={k} onClick={() => setFilter(k)} aria-pressed={filter === k} style={pill(filter === k)}>{label}</button>)}
+          </div>
+        </>
+      )}
+      <div role="table" aria-label={q ? `Earnings matching ${q}` : `Earnings reports on ${selDay ?? ''}`} style={{ flexGrow: 1, overflowY: 'auto', fontSize: 13 }}>
+        <div role="rowgroup" style={{ position: 'sticky', top: 0, background: 'var(--raised)' }}>
+          <div role="row" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 72px 84px', gap: 8, padding: '8px 16px', fontSize: 12, color: 'var(--soft)', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)' }}>
+            <span role="columnheader">{q ? 'Ticker · report day' : `Ticker · ${rows.length} of ${dayTotal}`}</span>
+            <span role="columnheader" style={{ textAlign: 'right' }}>EPS est.</span><span role="columnheader" style={{ textAlign: 'right' }}>Rev est.</span>
+          </div>
+        </div>
+        <div role="rowgroup">
+          {rows.map((e) => {
+            const sel = e.symbol === currentId, mine = myIds.has(e.symbol), dt = parseIso(e.report_date);
+            return (
+              <button key={e.symbol + e.report_date} role="row" onClick={() => onPick(e.symbol)} aria-current={sel} className="btn"
+                style={{ width: '100%', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 72px 84px', gap: 8, alignItems: 'center', minHeight: 44, padding: '0 16px', background: sel ? 'var(--line)' : 'transparent', border: 'none', borderBottom: '1px solid #1d2126', color: 'var(--fg)', textAlign: 'left' }}>
+                <span role="cell" style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+                  <span className="num" style={{ fontSize: 13, fontWeight: 500 }}>{e.symbol}</span>
+                  {mine && <span title="In your watchlist" aria-label="In your watchlist" style={{ width: 6, height: 6, borderRadius: 3, background: 'var(--fg)', alignSelf: 'center' }} />}
+                  {q && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{DOW[dt.getDay()]} {dt.getDate()} {MONTHS[dt.getMonth()]}</span>}
+                </span>
+                <span role="cell" className="num" style={{ textAlign: 'right', color: e.eps_est == null ? 'var(--muted)' : 'var(--fg)' }}>{fmtEps(e.eps_est)}</span>
+                <span role="cell" className="num" style={{ textAlign: 'right', color: e.rev_est == null ? 'var(--muted)' : 'var(--soft)' }}>{fmtRev(e.rev_est)}</span>
+              </button>
+            );
+          })}
+          {rows.length === 0 && (
+            <p style={{ margin: 0, padding: '28px 16px', color: 'var(--soft)', lineHeight: 1.5 }}>
+              {earnings.length === 0 ? 'No earnings data yet. It fills in after the daily job runs (needs the Eulerpool key).'
+                : dates.length === 0 ? 'No upcoming reports in the loaded window.'
+                : q ? `No report matching “${q}” in the next two weeks.`
+                : filter === 'mine' ? 'None of your watchlist symbols report on this day.'
+                : 'Nothing matches this filter on this day. Try “Has estimates”.'}
+            </p>
+          )}
+        </div>
+      </div>
+      <p style={{ margin: 0, padding: '10px 16px', fontSize: 12, lineHeight: 1.5, color: 'var(--muted)', borderTop: '1px solid var(--line)' }}>
+        {earnings[0]?.source ?? 'Eulerpool'} · report day only, time of day not provided · estimates can be missing for small caps · refreshed daily · click a ticker to chart it (some non-US tickers have no Yahoo price)
+      </p>
     </>
   );
 }

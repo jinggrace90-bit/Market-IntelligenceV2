@@ -221,4 +221,6 @@ Watchlist 的"搜索后添加"：v1 存在浏览器的 `localStorage` 里，因�
 - **Eulerpool 已实测并接入**（`lib/sources/eulerpool.ts`，`/api/cron/daily`）：base 是 `https://api.eulerpool.com/api/1`（不是 `/v1`），Bearer 头可用。业绩日历 `/calendar/earnings/{date}` → `earnings_events`；`/government/treasury/yields`（`y10` 为字符串）和 `/market/cboe/indices?symbol=VIX` → `candles`（interval 标记为 `eulerpool-1d`，避免与 Yahoo 日线混在一起），仅在 Yahoo 图表失败时作退路。`/calendar/economic-calendar` 只有 FRED 发布名+日期，不含时间/预测，**不用于经济日历**。
 - **Groq 默认模型**改为 `openai/gpt-oss-20b`（`llama-3.3-70b-versatile` 已下线）。每轮最多分析 12 条尚无 AI 结果的最新新闻；`reasoning_effort: low` 以适应免费档 8000 TPM。
 - **数据库错误不再被吞掉**：`lib/store.ts` 对每个 Supabase 调用检查 `error`，cron 路由返回 `{ok:false,error}`。`SUPABASE_URL` 会被规范化为只保留 origin。
-- 尚未实现：页面上展示业绩日历（数据已入库）；基本面（个股）。
+- **业绩日历面板**已实现（右侧工具栏第 3 个图标，快捷键 `E`）：读取 `earnings_events`（未来 14 天），按日期条切换，筛选「营收预期 ≥ $1B / 有预期值 / 我的品种」，可按代码跨日搜索，点击代码即可看图（临时品种不写入自选股）。来源只给报告日，没有盘前/盘后时间，面板底部已标注。
+- **Yahoo 的 0 值区间**：日内/52 周低点在换日时段可能返回 0，现按缺失处理，界面显示 `—`。
+- 尚未实现：基本面（个股）。

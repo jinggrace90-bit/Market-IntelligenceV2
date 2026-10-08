@@ -10,6 +10,12 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+/** Yahoo sometimes reports a day/52-week low of exactly 0 around session rollover. A real range bound is never <= 0 here. */
+function bound(v: unknown): number | null {
+  const n = num(v);
+  return n != null && n > 0 ? n : null;
+}
+
 /** One batched request for any number of Yahoo symbols. Keyed by Yahoo symbol. */
 export async function getQuotes(symbols: string[]): Promise<Record<string, Quote> | null> {
   if (!symbols.length) return {};
@@ -26,10 +32,10 @@ export async function getQuotes(symbols: string[]): Promise<Record<string, Quote
       change,
       changePct: num(q.regularMarketChangePercent) ?? 0,
       prevClose: num(q.regularMarketPreviousClose),
-      dayLow: num(q.regularMarketDayLow),
-      dayHigh: num(q.regularMarketDayHigh),
-      wk52Low: num(q.fiftyTwoWeekLow),
-      wk52High: num(q.fiftyTwoWeekHigh),
+      dayLow: bound(q.regularMarketDayLow),
+      dayHigh: bound(q.regularMarketDayHigh),
+      wk52Low: bound(q.fiftyTwoWeekLow),
+      wk52High: bound(q.fiftyTwoWeekHigh),
       marketState: typeof q.marketState === 'string' ? q.marketState : null,
       asOf: t.toISOString(),
       source: SOURCE,

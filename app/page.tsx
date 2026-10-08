@@ -9,11 +9,13 @@ async function load(): Promise<InitialData> {
   const day = 86400000;
   const now = Date.now();
   try {
-    const [saved, news, sentiment, events] = await Promise.all([
+    const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+    const [saved, news, sentiment, events, earnings] = await Promise.all([
       store.getQuotes(),
       store.getNews(40),
       store.getSentiment(),
       store.getEvents(new Date(now - 8 * day).toISOString(), new Date(now + 9 * day).toISOString()),
+      store.getEarnings(iso(now - day), iso(now + 15 * day)),
     ]);
     let newest = 0;
     const quotes: InitialData['quotes'] = {};
@@ -21,9 +23,9 @@ async function load(): Promise<InitialData> {
       quotes[k] = q;
       newest = Math.max(newest, new Date(fetchedAt).getTime());
     }
-    return { quotes, quotesFetchedAt: newest ? new Date(newest).toISOString() : null, news, sentiment, events };
+    return { quotes, quotesFetchedAt: newest ? new Date(newest).toISOString() : null, news, sentiment, events, earnings };
   } catch {
-    return { quotes: {}, quotesFetchedAt: null, news: [], sentiment: {}, events: [] };
+    return { quotes: {}, quotesFetchedAt: null, news: [], sentiment: {}, events: [], earnings: [] };
   }
 }
 

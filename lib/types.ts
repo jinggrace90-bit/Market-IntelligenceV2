@@ -82,10 +82,19 @@ export interface EconEvent {
   source: string;
 }
 
+export interface EarningsEvent {
+  symbol: string;
+  report_date: string; // YYYY-MM-DD, the company's report day (no time of day from the source)
+  eps_est: number | null;
+  rev_est: number | null;
+  source: string;
+}
+
 export interface InitialData {
   quotes: Record<string, Quote>;
   quotesFetchedAt: string | null;
   news: NewsItem[];
   sentiment: Record<string, SentimentRow>;
   events: EconEvent[];
+  earnings: EarningsEvent[];
 }

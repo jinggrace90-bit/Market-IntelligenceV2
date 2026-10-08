@@ -247,3 +247,15 @@ export async function countEarnings(): Promise<number> {
   if (db) return must(await db.from('earnings_events').select('*', { count: 'exact', head: true }), 'earnings count').count ?? 0;
   return Object.keys(readFile().earnings ?? {}).length;
 }
+
+export async function getEarnings(fromDate: string, toDate: string): Promise<EarningsRowDb[]> {
+  const db = supabase();
+  if (db) {
+    const { data } = must(await db.from('earnings_events').select('*').gte('report_date', fromDate).lte('report_date', toDate).order('report_date').limit(3000), 'earnings read');
+    return (data ?? []).map((r) => ({
+      symbol: r.symbol, report_date: r.report_date, source: r.source,
+      eps_est: r.eps_est == null ? null : Number(r.eps_est), rev_est: r.rev_est == null ? null : Number(r.rev_est),
+    }));
+  }
+  return Object.values(readFile().earnings ?? {}).filter((r) => r.report_date >= fromDate && r.report_date <= toDate);
+}

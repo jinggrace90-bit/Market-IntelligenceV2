@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { RANGES, type RangeId } from '@/lib/ranges';
 import type { Inst } from '@/lib/types';
 
-export type PanelId = 'watch' | 'cal' | 'news' | 'alerts';
+export type PanelId = 'watch' | 'cal' | 'earn' | 'news' | 'alerts';
 export const PANELS: { id: PanelId; label: string; key: string }[] = [
   { id: 'watch', label: 'Watchlist', key: 'W' },
   { id: 'cal', label: 'Economic calendar', key: 'C' },
+  { id: 'earn', label: 'Earnings calendar', key: 'E' },
   { id: 'news', label: 'News', key: 'N' },
   { id: 'alerts', label: 'Price alerts', key: 'A' },
 ];

@@ -1,7 +1,8 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { lsGet, lsSet, marketStatus } from '@/lib/client';
+import { instFromHit, lsGet, lsSet, marketStatus } from '@/lib/client';
+import type { SearchHit } from '@/lib/sources/yahoo-types';
 import { AMBER, colorOf, DOWN, fmt, pctStr, signed, UP, ago } from '@/lib/format';
 import { ALL_STATIC, BASE, CORE_SYMBOLS, TAPE, US_INDEX } from '@/lib/instruments';
 import { RANGES, type RangeId } from '@/lib/ranges';
@@ -9,7 +10,7 @@ import type { ChartResponse, InitialData, Inst, Quote, QuoteResponse } from '@/l
 import Chart, { type ChartState } from './Chart';
 import { Ago, useNow } from './hooks';
 import Palette, { PANELS, type PanelId } from './Palette';
-import { AlertsPanel, CalendarPanel, NewsPanel, WatchlistPanel, nextEvent, type AlertRule } from './Panels';
+import { AlertsPanel, CalendarPanel, EarningsPanel, NewsPanel, WatchlistPanel, nextEvent, type AlertRule } from './Panels';
 import Sectors, { type SectorState } from './Sectors';
 
 const LS_WATCH = 'mi.watchlist.v2', LS_PW = 'mi.panelW.v1', LS_ALERTS = 'mi.alerts.v1';
@@ -17,6 +18,7 @@ const PW_DEFAULT = 400, PW_MIN = 320;
 const ICONS: Record<PanelId, string> = {
   watch: 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01',
   cal: 'M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM16 3v4M8 3v4M4 10h16',
+  earn: 'M4 20h16M7 20v-7M12 20V6M17 20v-10',
   news: 'M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM9 9h6M9 13h6M9 17h3',
   alerts: 'M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9M10.3 20.5a2 2 0 0 0 3.4 0',
 };
@@ -33,6 +35,7 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
   const [dragging, setDragging] = useState(false);
   const [vw, setVw] = useState(1440);
   const [added, setAdded] = useState<Inst[]>([]);
+  const [viewed, setViewed] = useState<Inst[]>([]); // charted from a list (e.g. earnings) but not saved to the watchlist
   const [alerts, setAlerts] = useState<AlertRule[]>([]);
   const [infoOpen, setInfoOpen] = useState(false);
   const [palette, setPalette] = useState(false);
@@ -49,7 +52,7 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
 
   const rootRef = useRef<HTMLDivElement>(null);
   const addedRef = useRef<Inst[]>([]);
-  addedRef.current = added;
+  addedRef.current = [...added, ...viewed];
   const now = useNow(5000);
 
   /* ---------- boot: restore this browser's saved state ---------- */
@@ -66,7 +69,10 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const allInsts = useMemo(() => [...ALL_STATIC, ...added.filter((a) => !ALL_STATIC.some((s) => s.id === a.id))], [added]);
+  const allInsts = useMemo(() => {
+    const extra = [...added, ...viewed];
+    return [...ALL_STATIC, ...extra.filter((a, i) => !ALL_STATIC.some((s) => s.id === a.id) && extra.findIndex((b) => b.id === a.id) === i)];
+  }, [added, viewed]);
   const inst = allInsts.find((x) => x.id === sym) ?? BASE[5];
   const quote = quotes[inst.id];
   const list = useMemo(() => [...BASE, ...added.filter((a) => !BASE.some((b) => b.id === a.id))], [added]);
@@ -93,7 +99,7 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
   }, [poll]);
 
   // A symbol was just added to the watchlist: fetch its price now instead of waiting for the next tick.
-  useEffect(() => { if (mounted && added.length) poll(); }, [added.length, mounted, poll]);
+  useEffect(() => { if (mounted && (added.length || viewed.length)) poll(); }, [added.length, viewed.length, mounted, poll]);
 
   // Pull fresh news / sentiment / calendar from our own database every 5 minutes.
   useEffect(() => {
@@ -160,6 +166,16 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
   /* ---------- actions ---------- */
   const pick = useCallback((id: string) => setSym(id), []);
   const togglePanel = useCallback((p: PanelId) => setPanel((cur) => (cur === p ? null : p)), []);
+  /** Chart any ticker, even one we have no metadata for; refine its name from Yahoo search in the background. */
+  const viewSymbol = (symbol: string) => {
+    setSym(symbol);
+    if (allInsts.some((x) => x.id === symbol)) return;
+    setViewed((v) => [...v, { id: symbol, y: symbol, short: symbol, name: symbol, kind: 'Stock', group: 'Stocks', dp: 2, unit: 'USD', sess: 'us', driver: 'Earnings, sector and macro news' }]);
+    fetch(`/api/search?q=${encodeURIComponent(symbol)}`).then((r) => r.json()).then((j) => {
+      const hit = (j.results ?? []).find((h: SearchHit) => h.symbol === symbol);
+      if (hit) setViewed((v) => v.map((x) => (x.id === symbol ? instFromHit(hit) : x)));
+    }).catch(() => {});
+  };
   const addInst = (x: Inst) => {
     const next = added.some((a) => a.id === x.id) || BASE.some((b) => b.id === x.id) ? added : [...added, x];
     setAdded(next); lsSet(LS_WATCH, next); setSym(x.id);
@@ -224,7 +240,7 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
     if (k === '/') { e.preventDefault(); setPalette(true); return; }
     const ri = '12345678'.indexOf(k);
     if (ri >= 0) { setRange(RANGES[ri].id); return; }
-    const pm = ({ w: 'watch', c: 'cal', n: 'news', a: 'alerts' } as Record<string, PanelId>)[k.toLowerCase()];
+    const pm = ({ w: 'watch', c: 'cal', e: 'earn', n: 'news', a: 'alerts' } as Record<string, PanelId>)[k.toLowerCase()];
     if (pm) togglePanel(pm);
   };
 
@@ -399,8 +415,8 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
                   </div>
                   <dl className="mi-stats" style={{ margin: 0, paddingBottom: 6 }}>
                     <div style={card}><dt style={{ fontSize: 12, color: 'var(--muted)' }}>Prev close</dt><dd className="num" style={{ margin: 0, fontSize: 15 }}>{quote.prevClose != null ? fmt(quote.prevClose, inst.dp) : '—'}</dd></div>
-                    <div style={card}><dt style={{ fontSize: 12, color: 'var(--muted)' }}>Day range</dt><dd className="num" style={{ margin: 0, fontSize: 15 }}>{quote.dayLow != null && quote.dayHigh != null ? `${fmt(quote.dayLow, inst.dp)} – ${fmt(quote.dayHigh, inst.dp)}` : '—'}</dd></div>
-                    <div style={card}><dt style={{ fontSize: 12, color: 'var(--muted)' }}>52-week range</dt><dd className="num" style={{ margin: 0, fontSize: 15 }}>{quote.wk52Low != null && quote.wk52High != null ? `${fmt(quote.wk52Low, inst.dp)} – ${fmt(quote.wk52High, inst.dp)}` : '—'}</dd></div>
+                    <div style={card}><dt style={{ fontSize: 12, color: 'var(--muted)' }}>Day range</dt><dd className="num" style={{ margin: 0, fontSize: 15 }}>{quote.dayLow && quote.dayHigh ? `${fmt(quote.dayLow, inst.dp)} – ${fmt(quote.dayHigh, inst.dp)}` : '—'}</dd></div>
+                    <div style={card}><dt style={{ fontSize: 12, color: 'var(--muted)' }}>52-week range</dt><dd className="num" style={{ margin: 0, fontSize: 15 }}>{quote.wk52Low && quote.wk52High ? `${fmt(quote.wk52Low, inst.dp)} – ${fmt(quote.wk52High, inst.dp)}` : '—'}</dd></div>
                     <div style={card}><dt style={{ fontSize: 12, color: 'var(--muted)' }}>Watch for</dt><dd style={{ margin: 0, fontSize: 14 }}>{inst.driver}</dd></div>
                   </dl>
                 </div>
@@ -434,6 +450,7 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
             </div>
             {panel === 'watch' && <WatchlistPanel list={list} addedIds={new Set(added.map((a) => a.id))} quotes={quotes} currentId={inst.id} onPick={pick} onAdd={addInst} onRemove={removeInst} />}
             {panel === 'cal' && <CalendarPanel events={initial.events} />}
+            {panel === 'earn' && <EarningsPanel earnings={initial.earnings} myIds={new Set(list.map((x) => x.id))} currentId={inst.id} onPick={viewSymbol} />}
             {panel === 'news' && <NewsPanel news={initial.news} />}
             {panel === 'alerts' && <AlertsPanel inst={inst} price={price} alerts={alerts} priceOf={(id) => ({ price: quotes[id]?.price ?? null, dp: allInsts.find((x) => x.id === id)?.dp ?? 2 })} onChange={changeAlerts} />}
           </aside>
