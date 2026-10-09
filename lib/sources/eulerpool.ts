@@ -1,4 +1,5 @@
 import { fetchJson } from './http';
+import type { SentimentReading } from './sentiment';
 
 // Verified against the live API on 2026-10-08 (OpenAPI spec: GET https://api.eulerpool.com/api/1/documentation/yaml).
 // Base is /api/1 (NOT /v1). Bearer header works, so the key never goes into a URL.
@@ -61,4 +62,20 @@ export async function getVixHistory(): Promise<DailyClose[] | null> {
   if (!rows) return null;
   const out = rows.map((r) => ({ ts: Date.parse(r.date + 'T00:00:00Z'), c: num(r.close) })).filter((r): r is DailyClose => r.c != null && Number.isFinite(r.ts));
   return out.length ? out.sort((a, b) => a.ts - b.ts) : null;
+}
+
+/**
+ * GET /api/1/alternative/fear-and-greed?days=1
+ *   -> { latest: { value: 38.11, rating: "fear", timestamp: <ms> }, history: {...} }
+ * Same index (and same sub-indicator names) as CNN's. Used only when CNN blocks our server.
+ * NOTE (verified 2026-10-09): adding `&indicator=fear_and_greed_historical` returned a STALE cached reading
+ * (a day old) while the plain `?days=1` matched CNN exactly, so do not add that filter.
+ */
+export async function getFearGreedLatest(): Promise<SentimentReading | null> {
+  const j = await get<any>('/api/1/alternative/fear-and-greed?days=1');
+  const l = j?.latest;
+  const value = num(l?.value), ts = num(l?.timestamp);
+  if (value == null || ts == null) return null;
+  const rating = String(l.rating ?? '');
+  return { value: Math.round(value), label: rating.charAt(0).toUpperCase() + rating.slice(1), source: 'Fear & Greed via Eulerpool (CNN data, unofficial)', as_of: new Date(ts).toISOString() };
 }

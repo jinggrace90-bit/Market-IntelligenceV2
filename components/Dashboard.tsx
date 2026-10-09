@@ -431,6 +431,12 @@ export default function Dashboard({ initial }: { initial: InitialData }) {
 
         {sectorShow && mounted && <Sectors inst={inst} range={range} state={sectors} isUsIndex={isUsIndex} onPick={pick} />}
         {sectorNA && <p style={{ margin: '0 24px 28px', padding: '12px 16px', border: '1px dashed var(--line3)', borderRadius: 10, fontSize: 13, color: 'var(--soft)' }}>Hong Kong sector breakdown isn’t available yet — US sectors only in v1.</p>}
+        <footer style={{ marginTop: 'auto', padding: '16px 24px 28px', borderTop: '1px solid var(--line)', fontSize: 12, lineHeight: 1.6, color: 'var(--muted)' }}>
+          <p style={{ margin: 0 }}>
+            A personal, non-commercial project. <strong style={{ color: 'var(--soft)', fontWeight: 500 }}>Not investment advice.</strong> Data can be delayed, incomplete or wrong; futures are delayed about 10 minutes.
+            Sources: Yahoo Finance, CNN Fear &amp; Greed (unofficial), ForexFactory (unofficial), Eulerpool, RSS from CNBC, Investing.com, MarketWatch and FT, and AI reads from Groq (AI-generated, only when you ask for them).
+          </p>
+        </footer>
       </div>
 
       {/* ---------- side panel ---------- */}
