@@ -37,13 +37,18 @@ export async function POST(req: NextRequest) {
 
     const { reads, error } = await analyzeNews([{ id: row.id, title: row.title, summary: row.summary }]);
     const r = reads.find((x) => x.id === row.id);
-    if (!r) return NextResponse.json({ error: error ? 'The AI service could not analyse this right now.' : 'The AI returned no result.', detail: error }, { status: 502, headers: NO_STORE });
+    if (!r) {
+      // Upstream error text can contain account details (e.g. the Groq organisation id): log it, never send it to visitors.
+      console.error('[analyze] Groq failed:', error ?? 'no result for this headline');
+      return NextResponse.json({ error: error ? 'The AI service could not analyse this right now.' : 'The AI returned no result.' }, { status: 502, headers: NO_STORE });
+    }
 
     const tickers = r.tickers.map((t) => t.toUpperCase()).filter((t) => /^[A-Z0-9.\-]{1,10}$/.test(t) || findInst(t));
     const ai = { ai_tone: r.tone, ai_impact: r.impact, ai_summary: r.summary, tickers };
     await store.setNewsAi(row.id, ai);
     return NextResponse.json({ cached: false, ...ai }, { headers: NO_STORE });
   } catch (e) {
-    return NextResponse.json({ error: 'Something went wrong.', detail: (e as Error).message.slice(0, 200) }, { status: 500, headers: NO_STORE });
+    console.error('[analyze] failed:', (e as Error).message);
+    return NextResponse.json({ error: 'Something went wrong.' }, { status: 500, headers: NO_STORE });
   }
 }
