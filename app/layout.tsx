@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { Analytics } from '@vercel/analytics/next';
 // Fonts are bundled from npm (not fetched from Google at build time): next/font/google fails in Vercel's Turbopack build.
 import '@fontsource/ibm-plex-sans/latin-400.css';
 import '@fontsource/ibm-plex-sans/latin-500.css';
@@ -18,7 +19,10 @@ export const viewport: Viewport = { themeColor: '#0b0c0e', colorScheme: 'dark' }
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
